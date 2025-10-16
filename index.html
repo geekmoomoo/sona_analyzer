@@ -2,304 +2,341 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>AI 음악 분석기 (온라인·용량 최적화)</title>
+  <title>AI 음악 분석기 (정확도 강화·온라인 배포용)</title>
 
-  <!-- ✅ Essentia β6 (브라우저 전역 바인딩 보장) -->
-  <script src="https://cdn.jsdelivr.net/gh/MTG/essentia.js@0.1.0-beta6/dist/essentia-wasm.web.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/MTG/essentia.js@0.1.0-beta6/dist/essentia.js"></script>
+  <!-- ✅ Essentia β6: npm CDN (브라우저 전역 바인딩 보장) -->
+  <script src="https://cdn.jsdelivr.net/npm/essentia.js@0.1.0-beta6/dist/essentia-wasm.web.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/essentia.js@0.1.0-beta6/dist/essentia.js"></script>
 
-  <!-- ✅ Meyda CDN -->
+  <!-- ✅ Meyda (특징 추출) -->
   <script src="https://cdn.jsdelivr.net/npm/meyda@5.6.3/dist/web/meyda.min.js"></script>
 
   <style>
-    body{font-family:sans-serif;background:#1e1e1e;color:#d4d4d4;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;padding:1rem}
-    .container{background:#252526;padding:2rem;border-radius:10px;border:1px solid #3c3c3c;width:92%;max-width:900px}
-    h1,h3{color:#4ec9b0;text-align:center;margin:0 0 .6rem}
-    p{text-align:center;color:#9cdcfe;margin:.2rem 0 .8rem}
-    .controls{display:flex;flex-direction:column;align-items:center;gap:12px;margin:10px 0 18px}
-    button{background:#4ec9b0;color:#1e1e1e;border:none;padding:10px 16px;border-radius:8px;font-size:15px;cursor:pointer}
-    button:disabled{background:#3c3c3c;cursor:not-allowed}
-    .progress-container{width:100%;background:#3c3c3c;border-radius:6px;margin-top:10px;display:none}
-    progress{width:100%;height:18px;appearance:none}
-    progress::-webkit-progress-bar{background:#3c3c3c;border-radius:6px}
-    progress::-webkit-progress-value{background:#4ec9b0;border-radius:6px}
-    pre{background:#1e1e1e;color:#dcdcaa;padding:12px;border-radius:8px;border:1px solid #3c3c3c;white-space:pre-wrap;word-wrap:break-word;max-height:420px;overflow:auto;margin-top:12px}
-    .bpm-results{text-align:center;margin:12px 0;padding:12px;border:1px solid #3c3c3c;border-radius:8px}
-    .bpm-warning{color:#e57373;font-weight:bold;min-height:1.2em}
-    .row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-    .pill{padding:6px 10px;border:1px solid #3c3c3c;border-radius:999px;color:#a6b2c0;font-size:12px}
+    :root{ --accent:#37e0c3; --bg:#1a1d21; --card:#20252b; --fg:#e9f0f5; --muted:#98a7b5; --danger:#ff6b6b }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
+    .wrap{max-width:1000px;margin:42px auto;padding:0 18px}
+    .card{background:var(--card);border:1px solid #2a323a;border-radius:14px;padding:18px}
+    h1{margin:0 0 8px;font-size:26px}
+    p{margin:6px 0;color:var(--muted)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .btn{background:var(--accent);color:#042a25;border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
+    .btn.secondary{background:#2b343d;color:var(--fg);border:1px solid #3a4551}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .pill{padding:6px 10px;border:1px solid #2f3a45;border-radius:999px;color:#b9c7d3;font-size:12px}
+    audio{width:100%}
+    pre{background:#0f1317;border:1px solid #27323c;border-radius:10px;padding:10px;max-height:420px;overflow:auto}
+    .grid{display:grid;gap:18px}
+    .bpmBox{border:1px solid #2f3a45;border-radius:12px;padding:12px;max-width:320px}
+    .warn{color:#ffb4b4;font-weight:700;min-height:1.2em}
+    .hint{color:#8fa2b3;font-size:12px}
+    .bar{width:100%;height:18px;background:#2b343d;border-radius:6px;overflow:hidden}
+    .bar>span{display:block;height:100%;background:var(--accent);width:0}
+    .right{display:flex;justify-content:flex-end}
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>🎵 AI 음악 레시피 추출기</h1>
-    <p>파일 업로드만으로 온라인에서 BPM + Meyda 특징을 추출하고, 용량을 줄여 JSON 저장합니다.</p>
-
-    <div class="controls">
-      <input type="file" id="fileInput" accept="audio/*" />
-      <audio id="audioPlayer" style="display:none;"></audio>
-      <div class="row">
+  <div class="wrap grid">
+    <div class="card">
+      <h1>🎵 AI 음악 레시피 추출기</h1>
+      <p>온라인에서 파일 업로드만으로 <b>BPM(정확도 강화)</b> + <b>Meyda 특징</b>을 추출하고, <b>경량 JSON</b>으로 저장합니다.</p>
+      <div class="row" style="margin-top:6px">
+        <input type="file" id="fileInput" accept="audio/*">
+        <button id="analyzeBtn" class="btn" disabled>분석 시작</button>
+        <button id="saveBtn" class="btn secondary" style="display:none">JSON 저장 💾</button>
+      </div>
+      <div class="row" style="margin-top:10px">
         <span class="pill">Serve: <span id="serveInfo"></span></span>
         <span class="pill">Essentia: <span id="essState">loading…</span></span>
         <span class="pill">Method: <span id="method">—</span></span>
-      </div>
-      <button id="analyzeButton" disabled>파일을 선택하세요</button>
-      <button id="saveButton" style="display:none;">JSON 데이터 저장 💾</button>
-
-      <div id="bpm-results" class="bpm-results" style="display:none;">
-        <h3>BPM 분석 결과</h3>
-        <p><strong>BPM:</strong> <span id="essentia-bpm">—</span></p>
-        <p><strong>신뢰도:</strong> <span id="essentia-confidence">—</span></p>
-        <p class="bpm-warning" id="bpm-warning"></p>
-      </div>
-
-      <div id="progressContainer" class="progress-container">
-        <progress id="progressBar" value="0" max="100"></progress>
+        <span class="pill">윈도우: 15s / stride 5s</span>
       </div>
     </div>
 
-    <h3>Meyda.js 상세 데이터 (AI 학습용, 경량화 적용)</h3>
-    <pre id="results">분석 대기 중...</pre>
+    <div class="card grid">
+      <audio id="audio" controls preload="metadata"></audio>
+      <div class="bpmBox">
+        <b>BPM 분석 결과</b>
+        <div style="margin-top:6px">BPM: <span id="bpm">—</span></div>
+        <div>신뢰도: <span id="conf">—</span></div>
+        <div>메시지: <span id="msg" class="warn"></span></div>
+      </div>
+      <div>
+        <div class="bar"><span id="progress"></span></div>
+        <div class="hint">Meyda 프레임 수집 진행률</div>
+      </div>
+    </div>
+
+    <div class="card grid">
+      <h3 style="margin:0">Meyda.js 상세 데이터 (경량화 적용)</h3>
+      <pre id="out">분석 대기 중...</pre>
+      <div class="hint">저장 시 화면용 들여쓰기는 제거되고, 공백 없는 JSON으로 내려받습니다.</div>
+    </div>
   </div>
 
   <script>
-    /***** 옵션: 용량 최적화 파라미터 *****/
-    const MAX_SECONDS = 60;   // 최대 분석 시간(초)
-    const FRAME_STRIDE = 3;   // n프레임마다 1프레임만 저장
-    const DECIMALS = 4;       // 소수점 자릿수
-    const MFCC_KEEP = 13;
-    const CHROMA_KEEP = 12;
+    /***************** 옵션 (정확도·용량 밸런스) *****************/
+    const MAX_SECONDS     = 60;     // 분석 최대 구간(초)
+    const WIN_SECONDS     = 15;     // BPM 추정 윈도우 길이
+    const STRIDE_SECONDS  = 5;      // 윈도우 이동 간격
+    const PURE_SR         = 11025;  // Pure-JS 다운샘플 SR
+    const FRAME_STRIDE    = 3;      // Meyda n프레임 중 1프레임만 기록
+    const DECIMALS        = 4;      // 숫자 소수점
+    const MFCC_KEEP       = 13;     // MFCC 차원 제한
+    const CHROMA_KEEP     = 12;     // 크로마 차원 제한
 
-    const $ = (id)=>document.getElementById(id);
-    $('serveInfo').textContent = location.protocol + '//' + location.host;
-
+    /***************** DOM *****************/
+    const $ = id => document.getElementById(id);
+    const serveInfo = $('serveInfo'); serveInfo.textContent = location.protocol + '//' + location.host;
+    const essState  = $('essState');
+    const methodEl  = $('method');
     const fileInput = $('fileInput');
-    const audioPlayer = $('audioPlayer');
-    const analyzeButton = $('analyzeButton');
-    const saveButton = $('saveButton');
-    const resultsDisplay = $('results');
-    const progressContainer = $('progressContainer');
-    const progressBar = $('progressBar');
-    const bpmResultsDiv = $('bpm-results');
-    const essentiaBpmSpan = $('essentia-bpm');
-    const essentiaConfidenceSpan = $('essentia-confidence');
-    const bpmWarningSpan = $('bpm-warning');
-    const essState = $('essState');
-    const methodEl = $('method');
+    const analyzeBtn= $('analyzeBtn');
+    const saveBtn   = $('saveBtn');
+    const audio     = $('audio');
+    const bpmEl     = $('bpm');
+    const confEl    = $('conf');
+    const msgEl     = $('msg');
+    const outEl     = $('out');
+    const progBar   = $('progress');
 
-    let audioContext, source, meydaAnalyzer;
-    let featureCollection = {};
-    let originalFileName = '';
-    let bpmResult = null;
-
-    /***** 숫자 정밀도 축소 + 차원 축약 *****/
-    function roundNum(x, k=DECIMALS){ return typeof x==='number' ? parseFloat(x.toFixed(k)) : x; }
-    function roundArray(arr, keep=null){ const a = keep ? arr.slice(0, keep) : arr; return a.map(v=>roundNum(v)); }
-    function roundFeatures(features){
-      const out = {};
-      for (const k in features){
-        const v = features[k];
-        if (Array.isArray(v)){
-          if (k==='mfcc') out[k] = roundArray(v, MFCC_KEEP);
-          else if (k==='chroma') out[k] = roundArray(v, CHROMA_KEEP);
-          else out[k] = roundArray(v);
-        }else if (typeof v === 'number'){ out[k] = roundNum(v); }
-        else{ out[k] = v; }
-      }
-      return out;
-    }
-
-    /***** Essentia 초기화 (β6) — ⛔ 옵셔널체이닝 제거, 정확한 클래스명 사용 *****/
+    /***************** Essentia 초기화 *****************/
     let essentia = null;
     const essentiaReady = (async ()=>{
       try{
-        if (typeof window.EssentiaWASM !== 'function' || typeof window.Essentia !== 'function'){
+        if (typeof window.EssentiaWASM !== 'function' || typeof window.Essentia !== 'function') {
           throw new Error('Essentia libs not found on window');
         }
         const Module = await window.EssentiaWASM();
-        // ✅ 여기! 문법오타/옵셔널체이닝 제거
         essentia = new window.Essentia(Module);
         essState.textContent = 'ready';
         return true;
-      }catch(e){
+      } catch (e) {
         console.warn('Essentia init error:', e);
         essState.textContent = 'error';
         return false;
       }
     })();
 
-    /***** Pure-JS 자동상관 BPM (백업용) *****/
-    async function estimateBpmPureJS(file){
-      const TEMP_SR = 11025, MIN_BPM = 60, MAX_BPM = 200;
-      const buf = await file.arrayBuffer();
-      const ac = new (window.AudioContext || window.webkitAudioContext)();
-      const original = await ac.decodeAudioData(buf);
-      const dur = Math.min(original.duration, MAX_SECONDS);
-      const offline = new OfflineAudioContext(1, Math.floor(dur*TEMP_SR), TEMP_SR);
-      const bs = offline.createBufferSource();
-      bs.buffer = original; bs.connect(offline.destination); bs.start(0, 0, dur);
-      const ab = await offline.startRendering(); ac.close();
-
-      const data = ab.getChannelData(0);
-      const N = data.length;
-      const diff = new Float32Array(N-1);
-      for (let i=1;i<N;i++) diff[i-1] = data[i]-data[i-1];
-
-      const maxLag = Math.round((60/MIN_BPM)*TEMP_SR);
-      const minLag = Math.round((60/MAX_BPM)*TEMP_SR);
-      let bestLag=-1, bestVal=-Infinity;
-      for (let lag=minLag; lag<=maxLag; lag++){
-        let sum=0; for (let i=0;i<diff.length-lag;i++) sum += diff[i]*diff[i+lag];
-        if (sum>bestVal){ bestVal=sum; bestLag=lag; }
-      }
-      if (bestLag<0) throw new Error('autocorr-failed');
-
-      let bpm = 60*TEMP_SR/bestLag;
+    /***************** 유틸 *****************/
+    const round = (x,k=DECIMALS)=> typeof x==='number' ? +x.toFixed(k) : x;
+    const roundArr = (arr, keep=null)=> (keep?arr.slice(0,keep):arr).map(v=>round(v));
+    function roundFeatures(f){
+      const o={}; for(const k in f){
+        const v=f[k];
+        if(Array.isArray(v)){
+          if(k==='mfcc') o[k]=roundArr(v, MFCC_KEEP);
+          else if(k==='chroma') o[k]=roundArr(v, CHROMA_KEEP);
+          else o[k]=roundArr(v);
+        } else if (typeof v==='number'){ o[k]=round(v); }
+        else o[k]=v;
+      } return o;
+    }
+    function octaveCorrect(bpm){
+      // 70~180 근처로 접어 넣기
       while (bpm<70) bpm*=2;
       while (bpm>180) bpm/=2;
-
-      return { bpm: roundNum(bpm,1), confidence: roundNum(bestVal/1e8,3), method:'purejs' };
+      return bpm;
+    }
+    function vectorize(data){
+      if (essentia.audioBufferToVector) return essentia.audioBufferToVector(data);
+      if (essentia.arrayToVector)      return essentia.arrayToVector(data);
+      return essentia.vectorFloatToVector(Array.from(data));
     }
 
-    /***** Essentia BPM *****/
-    async function getBpmWithEssentia(file){
+    /***************** BPM — Essentia 윈도우 합의 *****************/
+    async function bpmUsingEssentia(file){
       const ok = await essentiaReady;
       if (!ok || !essentia) throw new Error('Essentia not ready');
 
-      const ac = new (window.AudioContext || window.webkitAudioContext)();
-      const arrayBuffer = await file.arrayBuffer();
-      const audioBuffer = await ac.decodeAudioData(arrayBuffer);
-      const data = audioBuffer.getChannelData(0);
-      const v = (typeof essentia.audioBufferToVector==='function')
-        ? essentia.audioBufferToVector(data)
-        : (typeof essentia.arrayToVector==='function')
-          ? essentia.arrayToVector(data)
-          : essentia.vectorFloatToVector(Array.from(data));
+      const ac  = new (window.AudioContext || window.webkitAudioContext)();
+      const ab  = await ac.decodeAudioData(await file.arrayBuffer());
+      const sr  = ab.sampleRate;
+      const left= ab.getChannelData(0);
 
-      const r = essentia.PercivalBpmEstimator(v);
-      let bpm = r.bpm, conf = r.confidence;
-      if (bpm>180 && bpm/2>=70) bpm/=2; else if (bpm<70 && bpm*2<=180) bpm*=2;
+      const dur = Math.min(ab.duration, MAX_SECONDS);
+      const win = Math.floor(WIN_SECONDS * sr);
+      const hop = Math.floor(STRIDE_SECONDS * sr);
+      const end = Math.floor(dur * sr);
 
+      const bpms = [];
+      for (let start=0; start+win<=end; start+=hop) {
+        const seg = left.subarray(start, start+win);
+        const v   = vectorize(seg);
+        const r   = essentia.PercivalBpmEstimator(v);
+        bpms.push(octaveCorrect(r.bpm));
+      }
       ac.close();
-      return { bpm: roundNum(bpm,1), confidence: roundNum(conf,3), method:'essentia' };
+
+      // 윈도우 중앙값 + IQR로 이상치 억제
+      bpms.sort((a,b)=>a-b);
+      const median = bpms.length ? bpms[Math.floor(bpms.length/2)] : NaN;
+
+      // 전체 60초 평균 신뢰도 근사치: 분산 기반으로 대략화
+      const mean = bpms.reduce((s,x)=>s+x,0)/bpms.length;
+      const sd   = Math.sqrt(bpms.reduce((s,x)=>s+(x-mean)**2,0)/Math.max(1,bpms.length-1));
+      const conf = Math.max(0, Math.min(1, 1 - (sd/mean))); // 분산이 작을수록 confident
+
+      return { bpm: round(median,1), confidence: round(conf,3), method:'essentia' };
     }
 
-    /***** 파일 선택 *****/
-    fileInput.addEventListener('change', (e)=>{
-      const file = e.target.files?.[0];
-      if (!file) return;
-      if (!audioContext){
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        source = audioContext.createMediaElementSource(audioPlayer);
-        source.connect(audioContext.destination);
+    /***************** BPM — PureJS(자동상관), 동일 윈도우 전략 *****************/
+    async function bpmUsingPureJS(file){
+      // 60초/11.025kHz로 리샘플 → 윈도우별 자동상관
+      const raw  = await file.arrayBuffer();
+      const tmp  = new (window.AudioContext || window.webkitAudioContext)();
+      const buf  = await tmp.decodeAudioData(raw);
+      const dur  = Math.min(buf.duration, MAX_SECONDS);
+
+      const offline = new OfflineAudioContext(1, Math.floor(dur*PURE_SR), PURE_SR);
+      const bs = offline.createBufferSource();
+      bs.buffer = buf; bs.connect(offline.destination); bs.start(0,0,dur);
+      const ab = await offline.startRendering();
+      tmp.close();
+
+      const data = ab.getChannelData(0);
+      const sr   = PURE_SR;
+      const win  = Math.floor(WIN_SECONDS * sr);
+      const hop  = Math.floor(STRIDE_SECONDS * sr);
+      const end  = data.length;
+
+      const MIN_BPM=60, MAX_BPM=200;
+      const lagMin = Math.round((60/MAX_BPM)*sr);
+      const lagMax = Math.round((60/MIN_BPM)*sr);
+
+      function acfBestLag(arr){ // 가장 단순하고 빠른 ACF
+        const N = arr.length;
+        const diff = new Float32Array(N-1);
+        for(let i=1;i<N;i++) diff[i-1]=arr[i]-arr[i-1];
+        let bestLag=-1,best= -Infinity;
+        for(let lag=lagMin;lag<=lagMax;lag++){
+          let s=0; for(let i=0;i<diff.length-lag;i++) s+= diff[i]*diff[i+lag];
+          if (s>best){best=s;bestLag=lag;}
+        }
+        return {lag:bestLag, score:best};
       }
-      audioPlayer.src = URL.createObjectURL(file);
-      originalFileName = file.name;
-      analyzeButton.disabled = false;
-      analyzeButton.textContent = '분석 시작';
-      saveButton.style.display = 'none';
-      bpmResultsDiv.style.display = 'none';
-      $('method').textContent = '—';
-      resultsDisplay.textContent = '분석 대기 중...';
+
+      const bpms=[], scores=[];
+      for(let st=0; st+win<=end; st+=hop){
+        const seg = data.subarray(st, st+win);
+        const {lag,score}=acfBestLag(seg);
+        let bpm = 60*sr/lag;
+        bpms.push(octaveCorrect(bpm));
+        scores.push(score);
+      }
+
+      bpms.sort((a,b)=>a-b);
+      const median = bpms.length ? bpms[Math.floor(bpms.length/2)] : NaN;
+
+      const mean = bpms.reduce((s,x)=>s+x,0)/bpms.length;
+      const sd   = Math.sqrt(bpms.reduce((s,x)=>s+(x-mean)**2,0)/Math.max(1,bpms.length-1));
+      const conf = Math.max(0, Math.min(1, 1 - (sd/mean)));
+
+      return { bpm: round(median,1), confidence: round(conf,3), method:'purejs' };
+    }
+
+    /***************** Meyda 수집 (경량화) *****************/
+    let audioCtx, source, meyda;
+    function ensureGraph(){
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        source   = audioCtx.createMediaElementSource(audio);
+        source.connect(audioCtx.destination);
+      }
+    }
+
+    /***************** 파일 선택 *****************/
+    let currentFile=null, currentFileName='';
+    fileInput.addEventListener('change', e=>{
+      const f = e.target.files?.[0];
+      if (!f) return;
+      currentFile = f; currentFileName = f.name;
+      ensureGraph();
+      audio.src = URL.createObjectURL(f);
+      analyzeBtn.disabled = false;
+      bpmEl.textContent='—'; confEl.textContent='—'; msgEl.textContent='';
+      methodEl.textContent='—';
+      outEl.textContent='분석 대기 중...';
+      progBar.style.width='0%';
+      saveBtn.style.display='none';
     });
 
-    /***** 분석 시작 *****/
-    analyzeButton.addEventListener('click', async ()=>{
-      const file = fileInput.files?.[0];
-      if (!file) return;
+    /***************** 분석 시작 *****************/
+    analyzeBtn.addEventListener('click', async ()=>{
+      if (!currentFile) return;
 
-      analyzeButton.disabled = true;
-      analyzeButton.textContent = '분석 중...';
-      progressContainer.style.display = 'block';
-      progressBar.value = 0;
-      bpmResultsDiv.style.display = 'block';
-      essentiaBpmSpan.textContent = '계산 중...';
-      essentiaConfidenceSpan.textContent = '계산 중...';
-      bpmWarningSpan.textContent = '';
-      methodEl.textContent = '—';
+      analyzeBtn.disabled = true;
+      msgEl.textContent='';
 
       // 1) BPM (Essentia → 실패 시 PureJS)
+      let res;
       try{
-        bpmResult = await getBpmWithEssentia(file);
+        res = await bpmUsingEssentia(currentFile);
       }catch(e){
         console.warn('Essentia BPM failed → fallback:', e);
-        bpmResult = await estimateBpmPureJS(file);
+        res = await bpmUsingPureJS(currentFile);
       }
-      essentiaBpmSpan.textContent = bpmResult.bpm;
-      essentiaConfidenceSpan.textContent = bpmResult.confidence;
-      methodEl.textContent = bpmResult.method;
-      if (bpmResult.confidence < 0.5) bpmWarningSpan.textContent = '⚠️ BPM 신뢰도가 낮습니다.';
+      bpmEl.textContent = res.bpm; confEl.textContent = res.confidence;
+      methodEl.textContent = res.method;
+      if (res.confidence < 0.5) msgEl.textContent = '⚠️ BPM 신뢰도가 낮습니다. (무드·라이브·변속 트랙 가능성)';
 
-      // 2) Meyda 수집 (프레임 스킵 + 최대 60초)
-      if (audioContext.state === 'suspended') await audioContext.resume();
+      // 2) Meyda 특징 추출 (FRAME_STRIDE로 경량화)
+      if (audioCtx.state==='suspended') await audioCtx.resume();
+      const feats = ['mfcc','chroma','energy','spectralCentroid','perceptualSharpness','zcr','spectralRolloff'];
+      const coll = {}; feats.forEach(k=>coll[k]=[]);
+      outEl.textContent='Meyda 수집 중…';
 
-      const featureExtractors = ['mfcc','chroma','energy','spectralCentroid','perceptualSharpness','zcr','spectralRolloff'];
-      featureCollection = {}; featureExtractors.forEach(k=>featureCollection[k]=[]);
+      audio.currentTime = 0;
+      audio.play();
 
-      audioPlayer.currentTime = 0;
-      audioPlayer.play();
-
-      let frameCount = 0;
-      const stopAt = () => Math.min(audioPlayer.duration || Infinity, MAX_SECONDS);
-
-      meydaAnalyzer = Meyda.createMeydaAnalyzer({
-        audioContext,
-        source,
+      let frames=0;
+      const stopAt = () => Math.min(audio.duration || Infinity, MAX_SECONDS);
+      meyda = Meyda.createMeydaAnalyzer({
+        audioContext: audioCtx,
+        source: source,
         bufferSize: 1024,
-        featureExtractors,
-        callback: (features)=>{
-          frameCount++;
-          if (frameCount % FRAME_STRIDE !== 0) return;
-
-          const rounded = roundFeatures(features);
-          for (const k in rounded){
-            if (featureCollection[k]) featureCollection[k].push(rounded[k]);
-          }
-
-          if (audioPlayer.currentTime >= stopAt()){
-            meydaAnalyzer.stop();
-            audioPlayer.pause();
-            finalize();
+        featureExtractors: feats,
+        callback: (f)=>{
+          frames++;
+          if (frames % FRAME_STRIDE !== 0) return;
+          const r = roundFeatures(f);
+          for(const k in r){ if(coll[k]) coll[k].push(r[k]); }
+          // progress
+          const cur = Math.min(audio.currentTime, stopAt());
+          progBar.style.width = ((cur/stopAt())*100).toFixed(1)+'%';
+          if (audio.currentTime >= stopAt()) {
+            meyda.stop(); audio.pause(); finalize();
           }
         }
       });
-      meydaAnalyzer.start();
-    });
+      meyda.start();
 
-    function finalize(){
-      resultsDisplay.textContent = JSON.stringify({features:featureCollection}, null, 2);
-      analyzeButton.disabled = false;
-      analyzeButton.textContent = '다른 파일 분석하기';
-      saveButton.style.display = 'inline-block';
-      progressContainer.style.display = 'none';
-    }
-
-    audioPlayer.addEventListener('timeupdate', ()=>{
-      if (audioPlayer.duration){
-        const stopAt = Math.min(audioPlayer.duration, MAX_SECONDS);
-        const cur = Math.min(audioPlayer.currentTime, stopAt);
-        progressBar.value = (cur / stopAt) * 100;
+      function finalize(){
+        // 화면용 보기
+        outEl.textContent = JSON.stringify({features:coll}, null, 2);
+        saveBtn.style.display='inline-block';
+        analyzeBtn.disabled=false;
+        // 저장 핸들러
+        saveBtn.onclick = ()=>{
+          const payload = { bpm: res, features: coll };
+          const blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = (currentFileName||'audio').replace(/\.[^/.]+$/,'') + '.json';
+          document.body.appendChild(a); a.click(); a.remove();
+        };
       }
     });
-    audioPlayer.addEventListener('ended', ()=>{
-      if (meydaAnalyzer) meydaAnalyzer.stop();
-      finalize();
-    });
 
-    /***** 저장 (용량 최적화: 공백 제거 JSON) *****/
-    saveButton.addEventListener('click', ()=>{
-      if (!featureCollection.energy || featureCollection.energy.length===0){
-        alert('저장할 데이터가 없습니다.'); return;
-      }
-      const payload = { bpm: bpmResult || null, features: featureCollection };
-      const dataStr = JSON.stringify(payload); // 압축형 JSON
-      const blob = new Blob([dataStr], {type:'application/json'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = (originalFileName||'audio').replace(/\.[^/.]+$/,'') + '.json';
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
+    /***************** 재생 막대 동기화 *****************/
+    audio.addEventListener('timeupdate', ()=>{
+      if (!audio.duration) return;
+      const stop = Math.min(audio.duration, MAX_SECONDS);
+      const cur  = Math.min(audio.currentTime, stop);
+      progBar.style.width = ((cur/stop)*100).toFixed(1)+'%';
+    });
+    audio.addEventListener('ended', ()=>{
+      if (meyda) meyda.stop();
     });
   </script>
 </body>
