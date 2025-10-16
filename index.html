@@ -2,15 +2,19 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>AI 음악 분석기 (정확도 강화·다중 CDN 로더)</title>
+  <title>AI 음악 분석기 (정확도 강화 · 로컬벤더링 안정판)</title>
 
-  <!-- Meyda (특징 추출) -->
+  <!-- ✅ Essentia β6: 저장소에 벤더링한 파일을 직접 서빙 -->
+  <script src="lib/essentia-wasm.web.js"></script>
+  <script src="lib/essentia.js"></script>
+
+  <!-- Meyda (CDN은 대체 쉬워서 유지. 필요시 이도 벤더링 가능) -->
   <script src="https://cdn.jsdelivr.net/npm/meyda@5.6.3/dist/web/meyda.min.js"></script>
 
   <style>
-    :root{ --accent:#37e0c3; --bg:#1a1d21; --card:#20252b; --fg:#e9f0f5; --muted:#98a7b5; --danger:#ff6b6b }
+    :root{ --accent:#37e0c3; --bg:#1a1d21; --card:#20252b; --fg:#e9f0f5; --muted:#98a7b5 }
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,"Apple SD Gothic Neo","Malgun Gothic",Segoe UI,Roboto,Helvetica,sans-serif}
     .wrap{max-width:1000px;margin:42px auto;padding:0 18px}
     .card{background:var(--card);border:1px solid #2a323a;border-radius:14px;padding:18px}
     h1{margin:0 0 8px;font-size:26px}
@@ -23,10 +27,9 @@
     audio{width:100%}
     pre{background:#0f1317;border:1px solid #27323c;border-radius:10px;padding:10px;max-height:420px;overflow:auto}
     .grid{display:grid;gap:18px}
-    .bpmBox{border:1px solid #2f3a45;border-radius:12px;padding:12px;max-width:320px}
+    .bpmBox{border:1px solid #2f3a45;border-radius:12px;padding:12px;max-width:340px}
     .warn{color:#ffb4b4;font-weight:700;min-height:1.2em}
-    .hint{color:#8fa2b3;font-size:12px}
-    .bar{width:100%;height:18px;background:#2b343d;border-radius:6px;overflow:hidden}
+    .bar{width:100%;height:18px;background:#2b343d;border-radius:6px;overflow:hidden;margin-top:8px}
     .bar>span{display:block;height:100%;background:var(--accent);width:0}
   </style>
 </head>
@@ -34,7 +37,7 @@
   <div class="wrap grid">
     <div class="card">
       <h1>🎵 AI 음악 레시피 추출기</h1>
-      <p>온라인에서 파일 업로드만으로 <b>BPM(정확도 강화)</b> + <b>Meyda 특징</b>을 추출하고, <b>경량 JSON</b>으로 저장합니다.</p>
+      <p>파일 업로드만으로 <b>BPM(정확도 강화)</b> + <b>Meyda 특징</b>을 추출하고, <b>경량 JSON</b>으로 저장합니다.</p>
       <div class="row" style="margin-top:6px">
         <input type="file" id="fileInput" accept="audio/*">
         <button id="analyzeBtn" class="btn" disabled>분석 시작</button>
@@ -56,90 +59,65 @@
         <div>신뢰도: <span id="conf">—</span></div>
         <div>메시지: <span id="msg" class="warn"></span></div>
       </div>
-      <div>
-        <div class="bar"><span id="progress"></span></div>
-        <div class="hint">Meyda 프레임 수집 진행률</div>
-      </div>
+      <div class="bar"><span id="progress"></span></div>
+      <div style="font-size:12px;color:#8fa2b3;">Meyda 프레임 수집 진행률</div>
     </div>
 
     <div class="card grid">
       <h3 style="margin:0">Meyda.js 상세 데이터 (경량화 적용)</h3>
       <pre id="out">분석 대기 중...</pre>
-      <div class="hint">저장 시 화면용 들여쓰기는 제거되고, 공백 없는 JSON으로 내려받습니다.</div>
+      <div style="font-size:12px;color:#8fa2b3;">저장 시 화면용 들여쓰기는 제거되고, 공백 없는 JSON으로 내려받습니다.</div>
     </div>
   </div>
 
   <script>
-    /*************** 옵션 (정확도·용량 밸런스) ***************/
+    /** 옵션(정확도·용량 밸런스) **/
     const MAX_SECONDS=60, WIN_SECONDS=15, STRIDE_SECONDS=5, PURE_SR=11025;
     const FRAME_STRIDE=3, DECIMALS=4, MFCC_KEEP=13, CHROMA_KEEP=12;
 
-    /*************** DOM ***************/
+    /** DOM **/
     const $=id=>document.getElementById(id);
     $('serveInfo').textContent = location.protocol + '//' + location.host;
     const essState=$('essState'), methodEl=$('method'), fileInput=$('fileInput');
     const analyzeBtn=$('analyzeBtn'), saveBtn=$('saveBtn'), audio=$('audio');
     const bpmEl=$('bpm'), confEl=$('conf'), msgEl=$('msg'), outEl=$('out'), progBar=$('progress');
 
-    /*************** 다중 CDN 로더 + 대기 ***************/
-    function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=()=>res(); s.onerror=()=>rej(new Error('load-fail:'+src)); document.head.appendChild(s); }); }
-    async function loadEssentiaMultiCdn(){
-      const cdns = [
-        // npm (권장)
-        ['https://cdn.jsdelivr.net/npm/essentia.js@0.1.0-beta6/dist/essentia-wasm.web.js',
-         'https://cdn.jsdelivr.net/npm/essentia.js@0.1.0-beta6/dist/essentia.js'],
-        // jsDelivr(GitHub)
-        ['https://cdn.jsdelivr.net/gh/MTG/essentia.js@0.1.0-beta6/dist/essentia-wasm.web.js',
-         'https://cdn.jsdelivr.net/gh/MTG/essentia.js@0.1.0-beta6/dist/essentia.js'],
-        // unpkg
-        ['https://unpkg.com/essentia.js@0.1.0-beta6/dist/essentia-wasm.web.js',
-         'https://unpkg.com/essentia.js@0.1.0-beta6/dist/essentia.js'],
-      ];
-      for (const [wasmUrl, jsUrl] of cdns){
-        try{
-          await loadScript(wasmUrl); await loadScript(jsUrl);
-          if (typeof window.EssentiaWASM==='function' && typeof window.Essentia==='function') return true;
-        }catch(e){ /* try next */ }
-      }
-      return false;
-    }
-    async function initEssentia(){
+    /** Essentia 초기화 (벤더링판) **/
+    let essentia=null;
+    const essentiaReady=(async()=>{
       try{
-        // 이미 페이지에 로드되어 있을 수도 있음
-        if (typeof window.EssentiaWASM!=='function' || typeof window.Essentia!=='function'){
-          const ok = await loadEssentiaMultiCdn();
-          if (!ok) throw new Error('CDN load failed (all fallbacks)');
+        if(typeof window.EssentiaWASM!=='function' || typeof window.Essentia!=='function'){
+          throw new Error('Essentia libs not found on window');
         }
         const Module = await window.EssentiaWASM();
-        const inst = new window.Essentia(Module);
-        essState.textContent = 'ready';
-        return inst;
+        essentia = new window.Essentia(Module);
+        essState.textContent='ready';
+        return true;
       }catch(e){
         console.warn('Essentia init error:', e);
-        essState.textContent = 'error';
-        return null;
+        essState.textContent='error';
+        return false;
       }
-    }
-    let essentia=null; const essentiaReady = (async()=>{ essentia = await initEssentia(); })();
+    })();
 
-    /*************** 유틸 ***************/
+    /** 유틸 **/
     const round=(x,k=DECIMALS)=>typeof x==='number'?+x.toFixed(k):x;
     const roundArr=(arr,keep=null)=>(keep?arr.slice(0,keep):arr).map(v=>round(v));
     function roundFeatures(f){ const o={}; for(const k in f){ const v=f[k];
       if(Array.isArray(v)){ o[k]=(k==='mfcc')?roundArr(v,MFCC_KEEP):(k==='chroma')?roundArr(v,CHROMA_KEEP):roundArr(v); }
       else if(typeof v==='number'){ o[k]=round(v); } else o[k]=v;
     } return o; }
-    function octaveCorrect(bpm){ while(bpm<70)bpm*=2; while(bpm>180)bpm/=2; return bpm; }
-    function vectorize(data){ if(essentia.audioBufferToVector) return essentia.audioBufferToVector(data);
-      if(essentia.arrayToVector) return essentia.arrayToVector(data);
+    const octaveCorrect=bpm=>{while(bpm<70)bpm*=2; while(bpm>180)bpm/=2; return bpm;};
+    function vectorize(data){ if(essentia?.audioBufferToVector) return essentia.audioBufferToVector(data);
+      if(essentia?.arrayToVector) return essentia.arrayToVector(data);
       return essentia.vectorFloatToVector(Array.from(data)); }
 
-    /*************** BPM — Essentia 윈도우 합의 ***************/
+    /** BPM — Essentia 윈도우 합의 **/
     async function bpmUsingEssentia(file){
-      await essentiaReady; if(!essentia) throw new Error('Essentia not ready');
-      const ac = new (window.AudioContext||window.webkitAudioContext)();
-      const ab = await ac.decodeAudioData(await file.arrayBuffer());
-      const sr = ab.sampleRate, left=ab.getChannelData(0);
+      const ok=await essentiaReady; if(!ok||!essentia) throw new Error('Essentia not ready');
+      const ac=new (window.AudioContext||window.webkitAudioContext)();
+      const ab=await ac.decodeAudioData(await file.arrayBuffer());
+      const sr=ab.sampleRate, left=ab.getChannelData(0);
       const dur=Math.min(ab.duration,MAX_SECONDS), win=Math.floor(WIN_SECONDS*sr), hop=Math.floor(STRIDE_SECONDS*sr), end=Math.floor(dur*sr);
       const bpms=[];
       for(let st=0; st+win<=end; st+=hop){
@@ -149,14 +127,14 @@
       }
       ac.close();
       bpms.sort((a,b)=>a-b);
-      const median = bpms[bpms.length>>1] ?? NaN;
-      const mean = bpms.reduce((s,x)=>s+x,0)/bpms.length;
-      const sd = Math.sqrt(bpms.reduce((s,x)=>s+(x-mean)**2,0)/Math.max(1,bpms.length-1));
-      const conf = Math.max(0,Math.min(1,1-(sd/mean)));
-      return { bpm: round(median,1), confidence: round(conf,3), method:'essentia' };
+      const median=bpms[bpms.length>>1] ?? NaN;
+      const mean=bpms.reduce((s,x)=>s+x,0)/bpms.length;
+      const sd=Math.sqrt(bpms.reduce((s,x)=>s+(x-mean)**2,0)/Math.max(1,bpms.length-1));
+      const conf=Math.max(0,Math.min(1,1-(sd/mean)));
+      return {bpm:round(median,1), confidence:round(conf,3), method:'essentia'};
     }
 
-    /*************** BPM — PureJS(자동상관) ***************/
+    /** BPM — PureJS 자동상관 (백업) **/
     async function bpmUsingPureJS(file){
       const raw=await file.arrayBuffer();
       const tmp=new (window.AudioContext||window.webkitAudioContext)();
@@ -170,18 +148,18 @@
       function acfBestLag(arr){ const N=arr.length, diff=new Float32Array(N-1); for(let i=1;i<N;i++) diff[i-1]=arr[i]-arr[i-1];
         let bestLag=-1,best=-Infinity; for(let lag=lagMin;lag<=lagMax;lag++){ let s=0; for(let i=0;i<diff.length-lag;i++) s+=diff[i]*diff[i+lag];
           if(s>best){best=s;bestLag=lag;} } return {lag:bestLag,score:best}; }
-      const bpms=[], scores=[]; for(let st=0; st+win<=data.length; st+=hop){ const {lag,score}=acfBestLag(data.subarray(st,st+win)); let bpm=60*sr/lag; bpms.push(octaveCorrect(bpm)); scores.push(score); }
+      const bpms=[]; for(let st=0; st+win<=data.length; st+=hop){ const {lag}=acfBestLag(data.subarray(st,st+win)); let bpm=60*sr/lag; bpms.push(octaveCorrect(bpm)); }
       bpms.sort((a,b)=>a-b); const median=bpms[bpms.length>>1] ?? NaN;
       const mean=bpms.reduce((s,x)=>s+x,0)/bpms.length; const sd=Math.sqrt(bpms.reduce((s,x)=>s+(x-mean)**2,0)/Math.max(1,bpms.length-1));
       const conf=Math.max(0,Math.min(1,1-(sd/mean)));
-      return { bpm: round(median,1), confidence: round(conf,3), method:'purejs' };
+      return {bpm:round(median,1), confidence:round(conf,3), method:'purejs'};
     }
 
-    /*************** WebAudio + Meyda ***************/
+    /** WebAudio + Meyda **/
     let audioCtx, source, meyda;
     function ensureGraph(){ if(!audioCtx){ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); source=audioCtx.createMediaElementSource(audio); source.connect(audioCtx.destination); } }
 
-    /*************** 파일 선택 ***************/
+    /** 파일 선택 **/
     let currentFile=null, currentFileName='';
     fileInput.addEventListener('change', e=>{
       const f=e.target.files?.[0]; if(!f) return;
@@ -191,7 +169,7 @@
       outEl.textContent='분석 대기 중...'; progBar.style.width='0%'; saveBtn.style.display='none';
     });
 
-    /*************** 분석 시작 ***************/
+    /** 분석 시작 **/
     analyzeBtn.addEventListener('click', async ()=>{
       if(!currentFile) return;
       analyzeBtn.disabled=true; msgEl.textContent='';
@@ -215,9 +193,15 @@
           if(audio.currentTime>=stopAt()){ meyda.stop(); audio.pause(); finalize(); } } });
       meyda.start();
 
-      function finalize(){ outEl.textContent=JSON.stringify({features:coll},null,2); saveBtn.style.display='inline-block'; analyzeBtn.disabled=false;
-        saveBtn.onclick=()=>{ const payload={bpm:res,features:coll}; const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
-          const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=(currentFileName||'audio').replace(/\.[^/.]+$/,'')+'.json'; document.body.appendChild(a); a.click(); a.remove(); };
+      function finalize(){
+        outEl.textContent=JSON.stringify({features:coll},null,2);
+        saveBtn.style.display='inline-block'; analyzeBtn.disabled=false;
+        saveBtn.onclick=()=>{
+          const payload={bpm:res,features:coll};
+          const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
+          const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+          a.download=(currentFileName||'audio').replace(/\.[^/.]+$/,'')+'.json'; document.body.appendChild(a); a.click(); a.remove();
+        };
       }
     });
 
