@@ -1,0 +1,13 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Temporary upload folder
+uploads/
+
+# Analysis output folder
+analysis_out/
+
+# OS generated files
+.DS_Store
+Thumbs.db
